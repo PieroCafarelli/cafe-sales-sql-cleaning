@@ -1,22 +1,22 @@
 -- =====================================================
--- Limpieza de datos: Dirty Cafe Sales (Kaggle) en MySQL
--- Autor: Piero S. Cafarelli
+-- Data Cleaning: Dirty Cafe Sales (Kaggle) in MySQL
+-- Author: Piero S. Cafarelli
 -- Dataset: https://www.kaggle.com/datasets/ahmedmohamed2003/cafe-sales-dirty-data-for-cleaning-training
--- Motor: MySQL 8 (MySQL Workbench)
+-- Engine: MySQL 8 (MySQL Workbench)
 --
--- CÓMO EJECUTARLO
---   Parte 1: ejecutar el PASO 0 (crea la base de datos y la tabla vacía).
---   Importar: clic derecho en la tabla dirty_cafe_sales > Table Data Import Wizard
---             > elegir dirty_cafe_sales.csv > "Use existing table" > Next hasta terminar.
---   Parte 2: ejecutar el resto del script desde el PASO 1.
+-- HOW TO RUN
+--   Part 1: run STEP 0 (creates the database and an empty table).
+--   Import: right-click the dirty_cafe_sales table > Table Data Import Wizard
+--           > choose dirty_cafe_sales.csv > "Use existing table" > Next until done.
+--   Part 2: run the rest of the script from STEP 1.
 -- =====================================================
 
 
 -- -----------------------------------------------------
--- 0. PREPARACIÓN: base de datos y tabla vacía
--- Todas las columnas son texto porque el archivo original mezcla
--- números con 'ERROR', 'UNKNOWN' y celdas vacías. Si se importan
--- como números, MySQL descarta esas filas y se pierden datos.
+-- 0. SETUP: database and empty table
+-- All columns are text because the raw file mixes numbers
+-- with 'ERROR', 'UNKNOWN' and blank cells. If they were imported
+-- as numbers, MySQL would skip those rows and data would be lost.
 -- -----------------------------------------------------
 
 CREATE DATABASE IF NOT EXISTS master_ebis;
@@ -35,23 +35,24 @@ CREATE TABLE dirty_cafe_sales (
     `Transaction Date` VARCHAR(20)
 );
 
--- >>> AQUÍ: importar dirty_cafe_sales.csv con el Table Data Import Wizard <<<
+-- >>> HERE: import dirty_cafe_sales.csv with the Table Data Import Wizard <<<
 
 
 -- -----------------------------------------------------
--- Comprobación de la importación (debe dar 10000)
+-- Import check (expected: 10000)
 -- -----------------------------------------------------
 
 USE master_ebis;
 SET SQL_SAFE_UPDATES = 0;
 
-SELECT COUNT(*) AS total_filas FROM dirty_cafe_sales;
+SELECT COUNT(*) AS total_rows FROM dirty_cafe_sales;
 
 -- -----------------------------------------------------
 -- 1. PAYMENT METHOD
+-- No rule can recover it, so placeholders become NULL.
 -- -----------------------------------------------------
 
-SELECT `Payment Method`, COUNT(*) as cantidad
+SELECT `Payment Method`, COUNT(*) AS records
 FROM dirty_cafe_sales
 GROUP BY `Payment Method`;
 
@@ -61,68 +62,73 @@ WHERE `Payment Method` = ''
    OR `Payment Method` = 'UNKNOWN'
    OR `Payment Method` = 'ERROR';
 
-SELECT `Payment Method`, COUNT(*) as cantidad
+SELECT `Payment Method`, COUNT(*) AS records
 FROM dirty_cafe_sales
 GROUP BY `Payment Method`;
 
 -- -----------------------------------------------------
 -- 2. LOCATION
+-- No rule can recover it, so placeholders become NULL.
 -- -----------------------------------------------------
+
+SELECT `Location`, COUNT(*) AS records
+FROM dirty_cafe_sales
+GROUP BY `Location`;
 
 UPDATE dirty_cafe_sales
 SET `Location` = NULL
 WHERE `Location` = ''
    OR `Location` = 'UNKNOWN'
-   OR `Location` = 'ERROR';   
+   OR `Location` = 'ERROR';
 
 -- -----------------------------------------------------
 -- 3. QUANTITY
 -- -----------------------------------------------------
 
-SELECT `Quantity`, COUNT(*) as registros
+SELECT `Quantity`, COUNT(*) AS records
 FROM dirty_cafe_sales
 GROUP BY `Quantity`
-ORDER BY registros DESC;
+ORDER BY records DESC;
 
--- Fase A: Reconstruir la cantidad con matemáticas (Total / Precio)
+-- Phase A: rebuild the quantity with math (Total / Price)
 UPDATE dirty_cafe_sales
 SET `Quantity` = CAST(`Total Spent` / `Price Per Unit` AS SIGNED)
 WHERE (`Quantity` = 'ERROR' OR `Quantity` = 'UNKNOWN' OR `Quantity` = '')
   AND `Price Per Unit` NOT IN ('ERROR', 'UNKNOWN', '', '0')
   AND `Total Spent` NOT IN ('ERROR', 'UNKNOWN', '');
 
--- Fase B: Mandar los remanentes irrecuperables a NULL definitivo
+-- Phase B: values that cannot be recovered become NULL
 UPDATE dirty_cafe_sales
 SET `Quantity` = NULL
 WHERE `Quantity` = 'ERROR'
    OR `Quantity` = 'UNKNOWN'
    OR `Quantity` = '';
 
-SELECT `Quantity`, COUNT(*) as registros
+SELECT `Quantity`, COUNT(*) AS records
 FROM dirty_cafe_sales
 GROUP BY `Quantity`
-ORDER BY registros DESC;
+ORDER BY records DESC;
 
 -- -----------------------------------------------------
--- 4. PRICE PER UNIT (Perfilado obligatorio: auditar los precios)
+-- 4. PRICE PER UNIT
 -- -----------------------------------------------------
 
-SELECT `Price Per Unit`, COUNT(*) as registros
+SELECT `Price Per Unit`, COUNT(*) AS records
 FROM dirty_cafe_sales
 GROUP BY `Price Per Unit`
-ORDER BY registros DESC;
+ORDER BY records DESC;
 
--- Fase A: Reconstruir el precio unitario con matemáticas (Total / Cantidad)
+-- Phase A: rebuild the unit price with math (Total / Quantity)
 UPDATE dirty_cafe_sales
 SET `Price Per Unit` = CAST(`Total Spent` / `Quantity` AS DECIMAL(10,2))
 WHERE (`Price Per Unit` = 'ERROR' OR `Price Per Unit` = 'UNKNOWN' OR `Price Per Unit` = '')
-  -- El escudo: solo si tenemos cantidad real (mayor a 0) y el total está limpio
-
-  -- se revisa aparte con IS NOT NULL
+  -- Guard: only when quantity is a real number above 0 and the total is clean.
+  -- Note: NULL is checked with IS NOT NULL, because NOT IN (..., NULL)
+  -- never matches any row in SQL.
   AND `Quantity` IS NOT NULL AND `Quantity` <> '0'
   AND `Total Spent` NOT IN ('ERROR', 'UNKNOWN', '');
 
--- Fase B: Mandar los remanentes irrecuperables a NULL definitivo
+-- Phase B: values that cannot be recovered become NULL
 UPDATE dirty_cafe_sales
 SET `Price Per Unit` = NULL
 WHERE `Price Per Unit` = 'ERROR'
@@ -130,24 +136,23 @@ WHERE `Price Per Unit` = 'ERROR'
    OR `Price Per Unit` = '';
 
 -- -----------------------------------------------------
--- 5. TOTAL SPENT (auditar el total gastado)
+-- 5. TOTAL SPENT
 -- -----------------------------------------------------
 
-SELECT `Total Spent`, COUNT(*) as registros
+SELECT `Total Spent`, COUNT(*) AS records
 FROM dirty_cafe_sales
 GROUP BY `Total Spent`
-ORDER BY registros DESC;
+ORDER BY records DESC;
 
--- Fase A: Reconstruir el Total Gastado con la multiplicación (Cantidad * Precio)
+-- Phase A: rebuild the total with math (Quantity × Price)
 UPDATE dirty_cafe_sales
 SET `Total Spent` = CAST(`Quantity` * `Price Per Unit` AS DECIMAL(10,2))
 WHERE (`Total Spent` = 'ERROR' OR `Total Spent` = 'UNKNOWN' OR `Total Spent` = '')
-  -- El escudo: solo si la cantidad y el precio ya son números válidos
-  
+  -- Guard: only when quantity and price are already valid numbers
   AND `Quantity` IS NOT NULL AND `Quantity` <> '0'
   AND `Price Per Unit` IS NOT NULL AND `Price Per Unit` <> '0';
 
--- Fase B: Mandar los remanentes irrecuperables a NULL definitivo
+-- Phase B: values that cannot be recovered become NULL
 UPDATE dirty_cafe_sales
 SET `Total Spent` = NULL
 WHERE `Total Spent` = 'ERROR'
@@ -156,27 +161,29 @@ WHERE `Total Spent` = 'ERROR'
 
 -- -----------------------------------------------------
 -- 6. TRANSACTION DATE
+-- Text is converted into a real DATE column.
 -- -----------------------------------------------------
 
-SELECT `Transaction Date`, COUNT(*) AS cantidad
+SELECT `Transaction Date`, COUNT(*) AS records
 FROM dirty_cafe_sales
 GROUP BY `Transaction Date`;
 
-ALTER TABLE dirty_cafe_sales ADD COLUMN fecha_limpia DATE;
+ALTER TABLE dirty_cafe_sales ADD COLUMN clean_date DATE;
 
 UPDATE dirty_cafe_sales
-SET fecha_limpia = STR_TO_DATE(`Transaction Date`, '%Y-%m-%d')
+SET clean_date = STR_TO_DATE(`Transaction Date`, '%Y-%m-%d')
 WHERE `Transaction Date` NOT IN ('ERROR', 'UNKNOWN', '');
 
-SELECT `Transaction Date`, fecha_limpia
+-- Compare old and new values before dropping the original column
+SELECT `Transaction Date`, clean_date
 FROM dirty_cafe_sales
 LIMIT 20;
 
 ALTER TABLE dirty_cafe_sales DROP COLUMN `Transaction Date`;
 
 -- -----------------------------------------------------
--- 7. ITEM (normalización de productos)
--- Reemplazamos los errores, incógnitas o celdas vacías
+-- 7. ITEM
+-- Errors, unknowns and blank cells become NULL.
 -- -----------------------------------------------------
 
 UPDATE dirty_cafe_sales
@@ -186,7 +193,8 @@ WHERE `Item` = 'ERROR'
    OR `Item` = '';
 
 -- ===================================================
--- PASO FINAL: OPTIMIZACIÓN Y CAMBIO DE TIPOS DE DATOS
+-- FINAL STEP: DATA TYPES
+-- Text columns become numbers.
 -- ===================================================
 
 ALTER TABLE dirty_cafe_sales
@@ -194,7 +202,7 @@ MODIFY COLUMN `Quantity` INT NULL,
 MODIFY COLUMN `Price Per Unit` DECIMAL(10,2) NULL,
 MODIFY COLUMN `Total Spent` DECIMAL(10,2) NULL;
 
--- Resultado final
+-- Final result
 SELECT * FROM dirty_cafe_sales LIMIT 20;
 
 SET SQL_SAFE_UPDATES = 1;
