@@ -57,4 +57,4 @@ Every column follows the same approach: **profile** it with `GROUP BY`, **recove
 
 ---
 
-**Author:** Piero S. Cafarelli · [LinkedIn](https://www.linkedin.com/in/piero-sapiente-cafarelli-ferrante-1a2957223)
+**Author:** Piero Cafarelli Ferrante· [LinkedIn](https://www.linkedin.com/in/piero-sapiente-cafarelli-ferrante-1a2957223)
