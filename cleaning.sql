@@ -1,6 +1,6 @@
 -- =====================================================
 -- Data Cleaning: Dirty Cafe Sales (Kaggle) in MySQL
--- Author: Piero S. Cafarelli
+-- Author: Piero Cafarelli Ferrante
 -- Dataset: https://www.kaggle.com/datasets/ahmedmohamed2003/cafe-sales-dirty-data-for-cleaning-training
 -- Engine: MySQL 8 (MySQL Workbench)
 --
